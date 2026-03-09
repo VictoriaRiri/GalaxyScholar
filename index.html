@@ -4,21 +4,25 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <meta name="theme-color" content="#0f0c29">
-    <meta name="description" content="Galaxy Scholar - Your personal academic universe">
+    <meta name="description" content="Galaxy Scholar - Your personal academic universe with gamified productivity">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <title>Galaxy Scholar</title>
     
-    <!-- PWA Manifest -->
-    <link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiR2FsYXh5IFNjaG9sYXIiLCJzaG9ydF9uYW1lIjoiR2FsYXh5U2Nob2xhciIsInN0YXJ0X3VybCI6Ii4iLCJkaXNwbGF5Ijoic3RhbmRhbG9uZSIsImJhY2tncm91bmRfY29sb3IiOiIjMGYwYzI5IiwidGhlbWVfY29sb3IiOiIjMGYwYzI5In0=">
+    <link rel="manifest" href="./manifest.json">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/947/947694.png">
     
-    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
-    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
-    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <!-- Tailwind -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <!-- Font Awesome -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     
     <style>
-        @import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600;700&family=Space+Mono:wght@400;700&display=swap');
+        * { -webkit-tap-highlight-color: transparent; box-sizing: border-box; }
         
         body {
             font-family: 'Exo 2', sans-serif;
@@ -27,14 +31,508 @@
             overflow: hidden;
             touch-action: manipulation;
             user-select: none;
+            -webkit-font-smoothing: antialiased;
+            margin: 0;
+            padding: 0;
         }
 
         .font-mono { font-family: 'Space Mono', monospace; }
 
-        /* 3D Canvas Container */
         #canvas-container {
             position: fixed;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            z-index: 0;
+            pointer-events: none;
+        }
+
+        #app-root {
+            position: relative;
+            z-index: 10;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .glass {
+            background: rgba(20, 20, 35, 0.7);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .glass-card {
+            background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.18);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-15px); }
+        }
+        
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(168, 85, 247, 0.4); }
+            50% { box-shadow: 0 0 40px rgba(168, 85, 247, 0.8); }
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        @keyframes spin-slow {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+
+        .animate-float { animation: float 6s ease-in-out infinite; }
+        .animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+        .animate-slide-in { animation: slideIn 0.3s ease-out; }
+        .animate-fade-in { animation: fadeIn 0.5s ease-out; }
+        .animate-spin-slow { animation: spin-slow 20s linear infinite; }
+
+        .xp-bar-fill {
+            transition: width 0.5s ease-out;
+            background: linear-gradient(90deg, #fbbf24, #f59e0b);
+            box-shadow: 0 0 10px rgba(251, 191, 36, 0.5);
+        }
+
+        .planet-card {
+            transition: transform 0.3s, box-shadow 0.3s;
+        }
+        .planet-card:active {
+            transform: scale(0.95);
+        }
+
+        .draft-node {
+            transition: all 0.3s;
+        }
+        .draft-node.active {
+            transform: scale(1.2);
+            box-shadow: 0 0 20px rgba(168, 85, 247, 0.8);
+        }
+
+        .achievement-pop {
+            animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0) translateX(100%); opacity: 0; }
+            100% { transform: scale(1) translateX(0); opacity: 1; }
+        }
+
+        .view {
+            display: none;
+            flex: 1;
+            overflow-y: auto;
+            padding: 16px;
+            padding-top: 80px;
+            padding-bottom: 100px;
+        }
+        .view.active {
+            display: block;
+        }
+
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            height: 80px;
+            padding-bottom: 20px;
+            z-index: 100;
+        }
+
+        .nav-btn {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 4px;
+            transition: all 0.3s;
+            color: #6b7280;
+            background: none;
+            border: none;
+            font-family: inherit;
+            cursor: pointer;
+            padding: 8px;
+        }
+        .nav-btn.active {
+            color: #a855f7;
+            transform: translateY(-4px);
+        }
+        .nav-btn.active .nav-icon {
+            background: rgba(168, 85, 247, 0.2);
+            box-shadow: 0 0 15px rgba(168, 85, 247, 0.5);
+        }
+        .nav-btn.special {
+            color: #eab308;
+        }
+        .nav-btn.special.active .nav-icon {
+            background: rgba(234, 179, 8, 0.2);
+            box-shadow: 0 0 15px rgba(234, 179, 8, 0.5);
+        }
+
+        .nav-icon {
+            width: 44px;
+            height: 44px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            transition: all 0.3s;
+        }
+
+        .xp-bar {
+            position: fixed;
             top: 0;
+            left: 0;
+            right: 0;
+            z-index: 50;
+            padding: 8px 16px;
+        }
+
+        .notification {
+            position: fixed;
+            top: 80px;
+            right: 16px;
+            z-index: 100;
+            max-width: 280px;
+            animation: popIn 0.5s ease-out;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 14px;
+            border: none;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+        .btn:active {
+            transform: scale(0.95);
+        }
+        .btn-primary {
+            background: linear-gradient(135deg, #a855f7, #ec4899);
+            color: white;
+            box-shadow: 0 4px 20px rgba(168, 85, 247, 0.4);
+        }
+        .btn-secondary {
+            background: rgba(255,255,255,0.1);
+            color: white;
+            border: 1px solid rgba(255,255,255,0.2);
+        }
+        .btn-gold {
+            background: linear-gradient(135deg, #fbbf24, #f59e0b);
+            color: white;
+            box-shadow: 0 4px 20px rgba(251, 191, 36, 0.4);
+        }
+
+        input, textarea, select {
+            width: 100%;
+            background: rgba(0,0,0,0.4);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 8px;
+            padding: 12px;
+            color: white;
+            font-family: inherit;
+            font-size: 14px;
+            outline: none;
+        }
+        input:focus, textarea:focus, select:focus {
+            border-color: #a855f7;
+        }
+        textarea {
+            resize: none;
+            font-family: 'Space Mono', monospace;
+            line-height: 1.6;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: rgba(0,0,0,0.4);
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #60a5fa, #a855f7, #ec4899);
+            border-radius: 4px;
+            transition: width 0.5s ease-out;
+        }
+
+        .timer-circle {
+            transform: rotate(-90deg);
+        }
+        .timer-circle circle {
+            fill: none;
+            stroke-width: 8;
+            stroke-linecap: round;
+        }
+        .timer-circle .bg {
+            stroke: rgba(255,255,255,0.1);
+        }
+        .timer-circle .progress {
+            stroke: #a855f7;
+            transition: stroke-dashoffset 1s linear;
+        }
+
+        .hidden { display: none !important; }
+    </style>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    
+    <div id="app-root">
+        <!-- XP Bar -->
+        <div class="xp-bar glass flex items-center gap-3">
+            <div class="flex items-center gap-2">
+                <div id="level-badge" class="w-10 h-10 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center font-bold text-sm">1</div>
+                <div class="text-xs">
+                    <div id="xp-text" class="font-bold text-yellow-400">0 XP</div>
+                    <div id="streak-text" class="text-gray-400 text-[10px]">0 day streak 🔥</div>
+                </div>
+            </div>
+            <div class="flex-1">
+                <div class="h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div id="xp-bar-fill" class="h-full xp-bar-fill" style="width: 0%"></div>
+                </div>
+                <div id="xp-remaining" class="text-[9px] text-gray-500 mt-0.5 text-right">1000 XP to next level</div>
+            </div>
+        </div>
+
+        <!-- Notifications -->
+        <div id="notifications"></div>
+
+        <!-- Views -->
+        <div id="view-home" class="view active animate-fade-in"></div>
+        <div id="view-timer" class="view"></div>
+        <div id="view-projects" class="view"></div>
+        <div id="view-colleges" class="view"></div>
+        <div id="view-essays" class="view hidden"></div>
+        <div id="view-legends" class="view"></div>
+        <div id="view-legend-detail" class="view hidden"></div>
+
+        <!-- Bottom Navigation -->
+        <nav class="bottom-nav glass flex justify-around items-center px-2">
+            <button class="nav-btn active" onclick="navigate('home')">
+                <div class="nav-icon"><i class="fas fa-home"></i></div>
+                <span class="text-[9px] font-bold">Galaxy</span>
+            </button>
+            <button class="nav-btn" onclick="navigate('timer')">
+                <div class="nav-icon"><i class="fas fa-clock"></i></div>
+                <span class="text-[9px] font-bold">Focus</span>
+            </button>
+            <button class="nav-btn" onclick="navigate('projects')">
+                <div class="nav-icon"><i class="fas fa-rocket"></i></div>
+                <span class="text-[9px] font-bold">Projects</span>
+            </button>
+            <button class="nav-btn" onclick="navigate('colleges')">
+                <div class="nav-icon"><i class="fas fa-graduation-cap"></i></div>
+                <span class="text-[9px] font-bold">Colleges</span>
+            </button>
+            <button class="nav-btn special" onclick="navigate('legends')">
+                <div class="nav-icon"><i class="fas fa-star"></i></div>
+                <span class="text-[9px] font-bold">Legends</span>
+            </button>
+        </nav>
+    </div>
+
+    <script>
+        // ==================== STATE MANAGEMENT ====================
+        
+        const State = {
+            stats: JSON.parse(localStorage.getItem('gs_stats')) || {
+                xp: 0, level: 1, streak: 0, lastActive: new Date().toDateString(),
+                achievements: [], totalFocusMinutes: 0, essaysWritten: 0, projectsCompleted: 0
+            },
+            projects: JSON.parse(localStorage.getItem('gs_projects')) || [],
+            colleges: JSON.parse(localStorage.getItem('gs_colleges')) || [],
+            essays: JSON.parse(localStorage.getItem('gs_essays')) || {},
+            currentView: 'home',
+            timerState: { timeLeft: 25*60, isActive: false, mode: 'focus', sessions: 0 }
+        };
+
+        function saveState() {
+            localStorage.setItem('gs_stats', JSON.stringify(State.stats));
+            localStorage.setItem('gs_projects', JSON.stringify(State.projects));
+            localStorage.setItem('gs_colleges', JSON.stringify(State.colleges));
+            localStorage.setItem('gs_essays', JSON.stringify(State.essays));
+        }
+
+        // ==================== GAMIFICATION ====================
+
+        function addXP(amount, reason) {
+            State.stats.xp += amount;
+            const newLevel = Math.floor(State.stats.xp / 1000) + 1;
+            if (newLevel > State.stats.level) {
+                State.stats.level = newLevel;
+                showNotification(`🎉 LEVEL UP! You're now Level ${newLevel}!`, 'success');
+            } else {
+                showNotification(`+${amount} XP: ${reason}`, 'xp');
+            }
+            updateXPBar();
+            saveState();
+        }
+
+        function unlockAchievement(id, title, description) {
+            if (!State.stats.achievements.includes(id)) {
+                State.stats.achievements.push(id);
+                showNotification(`🏆 ${title} Unlocked!`, 'success');
+                addXP(100, `Achievement: ${title}`);
+                saveState();
+            }
+        }
+
+        function checkStreak() {
+            const today = new Date().toDateString();
+            const last = new Date(State.stats.lastActive);
+            const diff = Math.floor((new Date(today) - last) / (1000 * 60 * 60 * 24));
+            
+            if (diff === 1) {
+                State.stats.streak++;
+                State.stats.lastActive = today;
+                showNotification(`🔥 ${State.stats.streak} Day Streak!`, 'xp');
+                addXP(50 * State.stats.streak, 'Streak Bonus');
+            } else if (diff > 1) {
+                State.stats.streak = 1;
+                State.stats.lastActive = today;
+            }
+            saveState();
+        }
+
+        function updateXPBar() {
+            const progress = (State.stats.xp % 1000) / 1000 * 100;
+            const remaining = 1000 - (State.stats.xp % 1000);
+            document.getElementById('level-badge').textContent = State.stats.level;
+            document.getElementById('xp-text').textContent = State.stats.xp.toLocaleString() + ' XP';
+            document.getElementById('streak-text').textContent = State.stats.streak + ' day streak 🔥';
+            document.getElementById('xp-bar-fill').style.width = progress + '%';
+            document.getElementById('xp-remaining').textContent = remaining + ' XP to next level';
+        }
+
+        // ==================== NOTIFICATIONS ====================
+
+        function showNotification(message, type = 'success') {
+            const container = document.getElementById('notifications');
+            const notif = document.createElement('div');
+            const colors = {
+                success: 'from-green-500 to-emerald-600',
+                xp: 'from-yellow-500 to-orange-500',
+                info: 'from-blue-500 to-purple-600'
+            };
+            notif.className = `notification glass-card px-4 py-3 rounded-xl text-sm font-bold shadow-lg bg-gradient-to-r ${colors[type]}`;
+            notif.innerHTML = `<i class="fas ${type === 'xp' ? 'fa-star' : 'fa-check-circle'} mr-2"></i>${message}`;
+            container.appendChild(notif);
+            setTimeout(() => {
+                notif.style.opacity = '0';
+                notif.style.transform = 'translateX(100%)';
+                setTimeout(() => notif.remove(), 300);
+            }, 3000);
+        }
+
+        // ==================== NAVIGATION ====================
+
+        function navigate(view) {
+            // Hide all views
+            document.querySelectorAll('.view').forEach(v => {
+                v.classList.remove('active');
+                v.classList.add('hidden');
+            });
+            
+            // Show target view
+            const target = document.getElementById('view-' + view);
+            if (target) {
+                target.classList.remove('hidden');
+                target.classList.add('active');
+            }
+            
+            // Update nav buttons
+            document.querySelectorAll('.nav-btn').forEach(btn => btn.classList.remove('active'));
+            const navIndex = ['home', 'timer', 'projects', 'colleges', 'legends'].indexOf(view);
+            if (navIndex >= 0) {
+                document.querySelectorAll('.nav-btn')[navIndex].classList.add('active');
+            }
+            
+            State.currentView = view;
+            addXP(5, 'Navigation');
+            
+            // Render view content
+            if (view === 'home') renderHome();
+            else if (view === 'timer') renderTimer();
+            else if (view === 'projects') renderProjects();
+            else if (view === 'colleges') renderColleges();
+            else if (view === 'legends') renderLegends();
+        }
+
+        // ==================== THREE.JS BACKGROUND ====================
+
+        function initThreeJS() {
+            const container = document.getElementById('canvas-container');
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            container.appendChild(renderer.domElement);
+
+            // Particles
+            const particlesGeometry = new THREE.BufferGeometry();
+            const particlesCount = 1000;
+            const posArray = new Float32Array(particlesCount * 3);
+            const colorArray = new Float32Array(particlesCount * 3);
+
+            for(let i = 0; i < particlesCount * 3; i += 3) {
+                posArray[i] = (Math.random() - 0.5) * 50;
+                posArray[i+1] = (Math.random() - 0.5) * 50;
+                posArray[i+2] = (Math.random() - 0.5) * 50;
+                colorArray[i] = 0.4 + Math.random() * 0.4;
+                colorArray[i+1] = 0.2 + Math.random() * 0.3;
+                colorArray[i+2] = 0.8 + Math.random() * 0.2;
+            }
+
+            particlesGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+            particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
+
+            const particlesMaterial = new THREE.PointsMaterial({
+                size: 0.08, vertexColors: true, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending
+            });
+
+            const particlesMesh = new THREE.Points(particlesGeometry, particlesMaterial);
+            scene.add(particlesMesh);
+
+            // Floating shapes
+            const shapes = [];
+            const geometries = [
+                new THREE.IcosahedronGeometry(0.4, 0),
+                new THREE.OctahedronGeometry(0.3, 0),
+                new THREE.TetrahedronGeometry(0.5, 0)
+            ];
+
+            for(let i = 0; i < 6; i++) {
+                const geom = geometries[Math.floor(Math.random() * geometries.length)];
+                const mat = new THREE.MeshBasicMaterial({
+                    color: new THREE.Color().setHSL(Math.random() * 0.2 + 0.7, 0.8, 0.5),
+                            top: 0;
             left: 0;
             width: 100%;
             height: 100%;
