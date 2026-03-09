@@ -1,0 +1,424 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="theme-color" content="#0f0c29">
+    <meta name="description" content="Galaxy Scholar - Your personal academic universe">
+    <title>Galaxy Scholar</title>
+    
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="data:application/json;base64,eyJuYW1lIjoiR2FsYXh5IFNjaG9sYXIiLCJzaG9ydF9uYW1lIjoiR2FsYXh5U2Nob2xhciIsInN0YXJ0X3VybCI6Ii4iLCJkaXNwbGF5Ijoic3RhbmRhbG9uZSIsImJhY2tncm91bmRfY29sb3IiOiIjMGYwYzI5IiwidGhlbWVfY29sb3IiOiIjMGYwYzI5In0=">
+    
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Exo+2:wght@300;400;600;700&family=Space+Mono:wght@400;700&display=swap');
+        
+        body {
+            font-family: 'Exo 2', sans-serif;
+            background-color: #050508;
+            color: white;
+            overflow: hidden;
+            touch-action: manipulation;
+            user-select: none;
+        }
+
+        .font-mono { font-family: 'Space Mono', monospace; }
+
+        /* 3D Canvas Container */
+        #canvas-container {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+
+        /* Glassmorphism */
+        .glass {
+            background: rgba(20, 20, 35, 0.6);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .glass-card {
+            background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255,255,255,0.18);
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+        }
+
+        /* Scrollbar */
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+        /* Animations */
+        @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(0deg); }
+            50% { transform: translateY(-20px) rotate(2deg); }
+        }
+        
+        @keyframes pulse-glow {
+            0%, 100% { box-shadow: 0 0 20px rgba(168, 85, 247, 0.4); }
+            50% { box-shadow: 0 0 40px rgba(168, 85, 247, 0.8); }
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+
+        .animate-float { animation: float 6s ease-in-out infinite; }
+        .animate-pulse-glow { animation: pulse-glow 2s ease-in-out infinite; }
+        .animate-slide-in { animation: slideIn 0.3s ease-out; }
+
+        /* Range Slider Styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            background: transparent;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            height: 20px;
+            width: 20px;
+            border-radius: 50%;
+            background: #a855f7;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(168, 85, 247, 0.8);
+            margin-top: -8px;
+        }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: rgba(255,255,255,0.2);
+            border-radius: 2px;
+        }
+
+        /* XP Bar */
+        .xp-bar-fill {
+            transition: width 0.5s ease-out;
+            background: linear-gradient(90deg, #fbbf24, #f59e0b);
+            box-shadow: 0 0 10px rgba(251, 191, 36, 0.5);
+        }
+
+        /* Planet Cards */
+        .planet-card {
+            transform-style: preserve-3d;
+            transition: transform 0.3s;
+        }
+        .planet-card:hover {
+            transform: rotateY(10deg) scale(1.05);
+        }
+
+        /* Essay Draft Timeline */
+        .draft-node {
+            transition: all 0.3s;
+        }
+        .draft-node.active {
+            transform: scale(1.2);
+            box-shadow: 0 0 20px rgba(168, 85, 247, 0.8);
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <div id="canvas-container"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef, useMemo } = React;
+
+        // --- Gamification System ---
+        const useGamification = () => {
+            const [stats, setStats] = useState(() => {
+                const saved = localStorage.getItem('gs_stats');
+                return saved ? JSON.parse(saved) : {
+                    xp: 0,
+                    level: 1,
+                    streak: 0,
+                    lastActive: new Date().toDateString(),
+                    achievements: []
+                };
+            });
+
+            useEffect(() => localStorage.setItem('gs_stats', JSON.stringify(stats)), [stats]);
+
+            const addXP = (amount, reason) => {
+                setStats(prev => {
+                    const newXP = prev.xp + amount;
+                    const newLevel = Math.floor(newXP / 1000) + 1;
+                    const leveledUp = newLevel > prev.level;
+                    
+                    if (leveledUp) {
+                        // Level up notification could go here
+                    }
+                    
+                    return {
+                        ...prev,
+                        xp: newXP,
+                        level: newLevel
+                    };
+                });
+            };
+
+            const checkStreak = () => {
+                const today = new Date().toDateString();
+                const last = new Date(stats.lastActive);
+                const diff = Math.floor((new Date(today) - last) / (1000 * 60 * 60 * 24));
+                
+                if (diff === 1) {
+                    setStats(prev => ({ ...prev, streak: prev.streak + 1, lastActive: today }));
+                    addXP(50 * stats.streak, 'Streak Bonus');
+                } else if (diff > 1) {
+                    setStats(prev => ({ ...prev, streak: 1, lastActive: today }));
+                }
+            };
+
+            return { stats, addXP, checkStreak };
+        };
+
+        // --- Three.js Background ---
+        const initThreeJS = () => {
+            const container = document.getElementById('canvas-container');
+            if (!container) return;
+
+            const scene = new THREE.Scene();
+            const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
+            const renderer = new THREE.WebGLRenderer({ alpha: true, antialias: true });
+            
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setPixelRatio(window.devicePixelRatio);
+            container.appendChild(renderer.domElement);
+
+            // Create nebula particles
+            const particlesGeometry = new THREE.BufferGeometry();
+            const particlesCount = 2000;
+            const posArray = new Float32Array(particlesCount * 3);
+            const colorArray = new Float32Array(particlesCount * 3);
+
+            for(let i = 0; i < particlesCount * 3; i += 3) {
+                posArray[i] = (Math.random() - 0.5) * 50;
+                posArray[i+1] = (Math.random() - 0.5) * 50;
+                posArray[i+2] = (Math.random() - 0.5) * 50;
+                
+                // Purple/blue nebula colors
+                colorArray[i] = 0.4 + Math.random() * 0.4;
+                colorArray[i+1] = 0.2 + Math.random() * 0.3;
+                colorArray[i+2] = 0.8 + Math.random() * 0.2;
+            }
+
+            particlesGeometry.setAttribute('position', new THREE.BufferAttribute(posArray, 3));
+            particlesGeometry.setAttribute('color', new THREE.BufferAttribute(colorArray, 3));
+
+            const particlesMaterial = new THREE.PointsMaterial({
+                size: 0.05,
+                vertexColors: true,
+                transparent: true,
+                opacity: 0.8,
+                blending: THREE.AdditiveBlending
+            });
+
+            const particlesMesh = new THREE.Points(particlesGeometry, particlesMaterial);
+            scene.add(particlesMesh);
+
+            camera.position.z = 5;
+
+            // Mouse interaction
+            let mouseX = 0;
+            let mouseY = 0;
+            
+            document.addEventListener('mousemove', (event) => {
+                mouseX = (event.clientX / window.innerWidth) * 2 - 1;
+                mouseY = -(event.clientY / window.innerHeight) * 2 + 1;
+            });
+
+            const animate = () => {
+                requestAnimationFrame(animate);
+                
+                particlesMesh.rotation.y += 0.0005;
+                particlesMesh.rotation.x += 0.0002;
+                
+                // Parallax effect
+                particlesMesh.rotation.y += mouseX * 0.0005;
+                particlesMesh.rotation.x += mouseY * 0.0005;
+
+                renderer.render(scene, camera);
+            };
+
+            animate();
+
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+        };
+
+        // --- Components ---
+
+        const XPBar = ({ stats }) => {
+            const progress = (stats.xp % 1000) / 1000 * 100;
+            return (
+                <div className="fixed top-0 left-0 right-0 z-50 glass px-4 py-2 flex items-center gap-3">
+                    <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-full bg-gradient-to-br from-yellow-400 to-orange-500 flex items-center justify-center font-bold text-xs">
+                            L{stats.level}
+                        </div>
+                        <div className="text-xs">
+                            <div className="font-bold text-yellow-400">{stats.xp} XP</div>
+                            <div className="text-gray-400 text-[10px]">{stats.streak} day streak 🔥</div>
+                        </div>
+                    </div>
+                    <div className="flex-1 h-2 bg-gray-700 rounded-full overflow-hidden">
+                        <div className="h-full xp-bar-fill" style={{width: `${progress}%`}}></div>
+                    </div>
+                </div>
+            );
+        };
+
+        const Button = ({ onClick, children, className = "", variant = "primary", disabled = false }) => {
+            const baseStyle = "px-4 py-3 rounded-xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-50";
+            const variants = {
+                primary: "bg-gradient-to-r from-purple-500 to-pink-500 text-white shadow-lg shadow-purple-500/30",
+                secondary: "glass text-white hover:bg-white/10",
+                danger: "bg-red-500/20 text-red-200 border border-red-500/50",
+                gold: "bg-gradient-to-r from-yellow-500 to-orange-500 text-white shadow-lg shadow-yellow-500/30"
+            };
+            return (
+                <button onClick={onClick} disabled={disabled} className={`${baseStyle} ${variants[variant]} ${className}`}>
+                    {children}
+                </button>
+            );
+        };
+
+        const Input = ({ label, ...props }) => (
+            <div className="mb-4">
+                <label className="block text-xs uppercase tracking-wider text-purple-300 mb-1">{label}</label>
+                <input className="w-full bg-black/40 border border-white/10 rounded-lg p-3 text-white focus:outline-none focus:border-purple-500 transition-colors" {...props} />
+            </div>
+        );
+
+        // --- Main App ---
+
+        const App = () => {
+            const [currentView, setCurrentView] = useState('home');
+            const { stats, addXP, checkStreak } = useGamification();
+            
+            // Data States
+            const [projects, setProjects] = useState(() => JSON.parse(localStorage.getItem('gs_projects')) || []);
+            const [colleges, setColleges] = useState(() => JSON.parse(localStorage.getItem('gs_colleges')) || []);
+            const [essays, setEssays] = useState(() => JSON.parse(localStorage.getItem('gs_essays')) || {});
+            
+            // Save data
+            useEffect(() => {
+                localStorage.setItem('gs_projects', JSON.stringify(projects));
+                localStorage.setItem('gs_colleges', JSON.stringify(colleges));
+                localStorage.setItem('gs_essays', JSON.stringify(essays));
+                checkStreak();
+            }, [projects, colleges, essays]);
+
+            // Init Three.js
+            useEffect(() => {
+                initThreeJS();
+            }, []);
+
+            const navigate = (view) => {
+                setCurrentView(view);
+                addXP(5, 'Navigation');
+            };
+
+            return (
+                <div className="h-screen w-screen flex flex-col relative overflow-hidden">
+                    <XPBar stats={stats} />
+                    
+                    <main className="flex-1 overflow-y-auto no-scrollbar pb-24 pt-16 relative z-10">
+                        {currentView === 'home' && <HomeView navigate={navigate} projects={projects} colleges={colleges} stats={stats} />}
+                        {currentView === 'timer' && <TimerView addXP={addXP} />}
+                        {currentView === 'projects' && <ProjectsView projects={projects} setProjects={setProjects} addXP={addXP} />}
+                        {currentView === 'colleges' && <CollegesView colleges={colleges} setColleges={setColleges} essays={essays} setEssays={setEssays} addXP={addXP} />}
+                        {currentView === 'legends' && <LegendsView addXP={addXP} />}
+                    </main>
+
+                    <nav className="absolute bottom-0 w-full glass border-t border-white/10 pb-safe pt-2 px-4 flex justify-between items-center z-50 h-20">
+                        <NavButton icon="fa-home" label="Galaxy" active={currentView === 'home'} onClick={() => navigate('home')} />
+                        <NavButton icon="fa-clock" label="Focus" active={currentView === 'timer'} onClick={() => navigate('timer')} />
+                        <NavButton icon="fa-rocket" label="Projects" active={currentView === 'projects'} onClick={() => navigate('projects')} />
+                        <NavButton icon="fa-graduation-cap" label="Colleges" active={currentView === 'colleges'} onClick={() => navigate('colleges')} />
+                        <NavButton icon="fa-star" label="Legends" active={currentView === 'legends'} onClick={() => navigate('legends')} special />
+                    </nav>
+                </div>
+            );
+        };
+
+        const NavButton = ({ icon, label, active, onClick, special }) => (
+            <button onClick={onClick} className={`flex flex-col items-center gap-1 transition-all duration-300 ${active ? 'text-purple-400 -translate-y-2' : 'text-gray-400'} ${special ? 'text-yellow-400' : ''}`}>
+                <div className={`p-2 rounded-full ${active ? 'bg-purple-500/20 shadow-[0_0_15px_rgba(168,85,247,0.5)]' : ''} ${special && active ? 'bg-yellow-500/20 shadow-[0_0_15px_rgba(234,179,8,0.5)]' : ''}`}>
+                    <i className={`fas ${icon} text-lg`}></i>
+                </div>
+                <span className="text-[9px] font-bold tracking-wide">{label}</span>
+            </button>
+        );
+
+        // --- Home View ---
+
+        const HomeView = ({ navigate, projects, colleges, stats }) => {
+            const upcoming = [...colleges]
+                .filter(c => new Date(c.deadline) > new Date())
+                .sort((a, b) => new Date(a.deadline) - new Date(b.deadline))
+                .slice(0, 3);
+
+            return (
+                <div className="p-6 min-h-full flex flex-col">
+                    <header className="mb-6 text-center">
+                        <h1 className="text-4xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-400 via-pink-300 to-yellow-300 animate-pulse">
+                            Galaxy Scholar
+                        </h1>
+                        <p className="text-purple-200/60 mt-2 text-sm">Navigate your academic universe</p>
+                    </header>
+
+                    {/* Quick Actions Grid */}
+                    <div className="grid grid-cols-2 gap-4 mb-6">
+                        <div onClick={() => navigate('timer')} className="glass-card p-4 rounded-2xl cursor-pointer hover:scale-105 transition-transform group">
+                            <div className="w-12 h-12 rounded-full bg-blue-500/20 flex items-center justify-center mb-3 group-hover:bg-blue-500/40 transition-colors">
+                                <i className="fas fa-hourglass-half text-blue-400 text-xl"></i>
+                            </div>
+                            <h3 className="font-bold text-sm">Focus Mode</h3>
+                            <p className="text-xs text-gray-400 mt-1">Pomodoro Timer</p>
+                        </div>
+                        
+                        <div onClick={() => navigate('legends')} className="glass-card p-4 rounded-2xl cursor-pointer hover:scale-105 transition-transform group border-yellow-500/30">
+                            <div className="w-12 h-12 rounded-full bg-yellow-500/20 flex items-center justify-center mb-3 group-hover:bg-yellow-500/40 transition-colors">
+                                <i className="fas fa-crown text-yellow-400 text-xl"></i>
+                            </div>
+                            <h3 className="font-bold text-sm text-yellow-200">STEM Legends</h3>
+                            <p className="text-xs text-gray-400 mt-1">Find Inspiration</p>
+                        </div>
+                    </div>
+
+                    {/* Upcoming Deadlines */}
+                    <div className="space-y-3 mb-6">
+                        <h3 className="text-sm font-bold text-white/80 uppercase tracking-wider flex items-center gap-2">
+                            <i className="fas fa-calendar-alt text-pink-400"></i>
+                            Upcoming Gravity Wells
+                        </h3>
+                        {upcoming.length > 0 ? upcoming.map(college => {
+                            const days = Math.ceil((new Date(college.deadline) - new Date()) / (1000 * 60 * 60 * 24));
+                            return (
+                                <div key={college.id} className="glass-card p-4 rounded-xl flex items-center gap-4 animate-float" style={{animationDelay: `${Math.random()}s`}}>
+                                    <img src={college.logo || `https://logo.clearbit.com/${college.name.toLowerCase().replace(/\s/g, '')}.edu`} 
+                                         className="w-12 h-12 rounded-full bg-white/10 object-contain p-1"
+                                         onError={(e) => e.target.src = 'https://via.placeholder.com/48?text=🏛️'}
+                                         alt="" />
+                                    <div className="flex-1">
+                                        <h4 className="font-bold text-sm">{college.name}</h4>
+                                        <p className="text-xs text-pink-300">{days} days left</p>
+                                    </div>
+                                    <div className="w-10 h-10 rounded-full bg-pink-500/20 flex items-center ju
